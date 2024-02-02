@@ -1,0 +1,82 @@
+type User{
+    ID: ID!
+    Username: String!
+    Password: String!
+    Email: String!
+    Token: String
+    Expiry: String
+}
+
+type Tiger{
+    ID: Int!
+    Name: String!
+    DateOfBirth: String!
+    LastSeenTimestamp: String!
+    LastSeenCoordinates: Coordinates!
+}
+
+type Coordinates{
+    Lat: Float!
+    Lon: Float!
+}
+
+type Sighting{
+    ID: Int!
+    TigerID: Int!
+    Timestamp: String!
+    Coordinates: Coordinates!
+    ImageURL: String
+}
+
+type TokenMeta{
+    Token: String!
+    Expiry: String!
+}
+
+type TigerEdge {
+  node: Tiger!
+  cursor: String!
+}
+
+type TigerConnection {
+  edges: [TigerEdge]
+  pageInfo: PageInfo!
+}
+
+type SightingEdge {
+  node: Sighting!
+  cursor: String!
+}
+
+type SightingConnection {
+  edges: [SightingEdge]
+  pageInfo: PageInfo!
+}
+
+type PageInfo {
+  hasNextPage: Boolean!
+  endCursor: String
+}
+
+type Query{
+    listTigers(first: Int, after: String): TigerConnection!
+    ListSightings(TigerID: Int!, first: Int, after: String) : SightingConnection!
+}
+
+type Mutation{
+    CreateUser(Username: String!, Password: String!, Email: String!): User!
+    createTiger(Name: String!, DateOfBirth: String!, LastSeenTimestamp: String!, Coordinates: CoordinatesInput!): Tiger!
+    CreateSighting(TigerID: Int!, Timestamp: String!, Coordinates: CoordinatesInput!, ImageURL: String): Sighting!
+    Login(input: Login!): TokenMeta!
+    refreshToken(token: String!): TokenMeta!
+}
+
+input CoordinatesInput{
+    Lat: Float!
+    Lon: Float!
+}
+
+input Login {
+  Username: String!
+  Password: String!
+}
