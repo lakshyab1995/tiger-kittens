@@ -85,7 +85,46 @@ func (r *mutationResolver) CreateTiger(ctx context.Context, name string, dateOfB
 
 // CreateSighting is the resolver for the CreateSighting field.
 func (r *mutationResolver) CreateSighting(ctx context.Context, tigerID int, timestamp string, coordinates model.CoordinatesInput, imageURL *string) (*model.Sighting, error) {
-	panic(fmt.Errorf("not implemented: CreateSighting - CreateSighting"))
+	lastSight, err := r.SightRepository.GetLastSighting(tigerID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Check if the tiger is within 5 kilometers of its previous sighting
+	if isWithinRange(coordinates, lastSight.Coordinates) {
+		return nil, &TigerWithinRangeError{TigerID: tigerID}
+	}
+
+	// Parse the lastSeenTimestamp string into a time.Time value
+	ts, err := time.Parse(time.RFC3339, timestamp)
+	if err != nil {
+		return nil, fmt.Errorf("invalid timestamp format: %w", err)
+	}
+
+	newSight := db.Sighting{
+		TigerID:   tigerID,
+		Timestamp: ts,
+		Coordinates: db.Coordinates{
+			Lat: coordinates.Lat,
+			Lon: coordinates.Lon,
+		},
+		ImageURL: *imageURL,
+	}
+
+	if err := r.SightRepository.Create(&newSight); err != nil {
+		return nil, err
+	}
+
+	return &model.Sighting{
+		ID:        int(newSight.ID),
+		TigerID:   newSight.TigerID,
+		Timestamp: newSight.Timestamp.Format(time.RFC3339),
+		Coordinates: &model.Coordinates{
+			Lat: newSight.Coordinates.Lat,
+			Lon: newSight.Coordinates.Lon,
+		},
+		ImageURL: &newSight.ImageURL,
+	}, nil
 }
 
 // Login is the resolver for the Login field.
@@ -152,7 +191,35 @@ func (r *queryResolver) ListTigers(ctx context.Context, first *int, after *strin
 
 // ListSightings is the resolver for the ListSightings field.
 func (r *queryResolver) ListSightings(ctx context.Context, tigerID int, first *int, after *string) (*model.SightingConnection, error) {
-	panic(fmt.Errorf("not implemented: ListSightings - ListSightings"))
+	sightings, nextCursor, err := r.SightRepository.GetAllSightings(tigerID, first, after)
+	if err != nil {
+		return nil, err
+	}
+
+	edges := make([]*model.SightingEdge, len(sightings))
+	for i, sighting := range sightings {
+		edges[i] = &model.SightingEdge{
+			Node: &model.Sighting{
+				ID:        int(sighting.ID),
+				TigerID:   sighting.TigerID,
+				Timestamp: sighting.Timestamp.Format(time.RFC3339),
+				Coordinates: &model.Coordinates{
+					Lat: sighting.Coordinates.Lat,
+					Lon: sighting.Coordinates.Lon,
+				},
+				ImageURL: &sighting.ImageURL,
+			},
+			Cursor: EncodeCursor(int(sighting.ID)),
+		}
+	}
+
+	return &model.SightingConnection{
+		Edges: edges,
+		PageInfo: &model.PageInfo{
+			HasNextPage: nextCursor != nil,
+			EndCursor:   nextCursor,
+		},
+	}, nil
 }
 
 // Mutation returns MutationResolver implementation.
