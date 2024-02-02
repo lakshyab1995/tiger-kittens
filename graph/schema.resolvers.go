@@ -7,11 +7,14 @@ package graph
 import (
 	"context"
 	"fmt"
+	"log"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/lakshyab1995/tiger-kittens/db"
 	"github.com/lakshyab1995/tiger-kittens/graph/model"
 	"github.com/lakshyab1995/tiger-kittens/jwt"
+	"github.com/lakshyab1995/tiger-kittens/utils"
 )
 
 // CreateUser is the resolver for the CreateUser field.
@@ -39,7 +42,45 @@ func (r *mutationResolver) CreateUser(ctx context.Context, username string, pass
 
 // CreateTiger is the resolver for the createTiger field.
 func (r *mutationResolver) CreateTiger(ctx context.Context, name string, dateOfBirth string, lastSeenTimestamp string, coordinates model.CoordinatesInput) (*model.Tiger, error) {
-	panic(fmt.Errorf("not implemented: CreateTiger - createTiger"))
+	if user := utils.ForContext(ctx); user == nil {
+		return nil, fmt.Errorf("access denied")
+	}
+
+	// Parse the lastSeenTimestamp string into a time.Time value
+	timestamp, err := time.Parse(time.RFC3339, lastSeenTimestamp)
+	if err != nil {
+		return nil, fmt.Errorf("invalid timestamp format: %w", err)
+	}
+
+	dbTiger := db.Tiger{
+		Name:        name,
+		DateOfBirth: dateOfBirth,
+	}
+
+	if err := r.TigerRepository.Create(&dbTiger); err != nil {
+		log.Println(err)
+		return nil, err
+	}
+	dbSight := &db.Sighting{
+		TigerID:   dbTiger.ID,
+		Timestamp: timestamp,
+		Coordinates: db.Coordinates{
+			Lat: coordinates.Lat,
+			Lon: coordinates.Lon,
+		},
+	}
+	r.SightRepository.Create(dbSight)
+
+	return &model.Tiger{
+		ID:                dbTiger.ID,
+		Name:              dbTiger.Name,
+		DateOfBirth:       dbTiger.DateOfBirth,
+		LastSeenTimestamp: dbSight.Timestamp.Format(time.RFC3339),
+		LastSeenCoordinates: &model.Coordinates{
+			Lat: coordinates.Lat,
+			Lon: coordinates.Lon,
+		},
+	}, nil
 }
 
 // CreateSighting is the resolver for the CreateSighting field.
@@ -71,9 +112,42 @@ func (r *mutationResolver) RefreshToken(ctx context.Context, token string) (*mod
 	return RefreshToken(ctx, token)
 }
 
-// ListTigers is the resolver for the listTigers field.
+// ListTigers is the resolver for the ListTigers field.
 func (r *queryResolver) ListTigers(ctx context.Context, first *int, after *string) (*model.TigerConnection, error) {
-	panic(fmt.Errorf("not implemented: ListTigers - listTigers"))
+	tigers, nextCursor, err := r.TigerRepository.List(first, after)
+	if err != nil {
+		return nil, err
+	}
+
+	edges := make([]*model.TigerEdge, len(tigers))
+	for i, tiger := range tigers {
+		sight, err := r.SightRepository.GetLastSighting(tiger.ID)
+		if err != nil {
+			log.Println(err)
+			return nil, err
+		}
+		edges[i] = &model.TigerEdge{
+			Node: &model.Tiger{
+				ID:                tiger.ID,
+				Name:              tiger.Name,
+				DateOfBirth:       tiger.DateOfBirth,
+				LastSeenTimestamp: sight.Timestamp.Format(time.RFC3339),
+				LastSeenCoordinates: &model.Coordinates{
+					Lat: sight.Coordinates.Lat,
+					Lon: sight.Coordinates.Lon,
+				},
+			},
+			Cursor: EncodeCursor(tiger.ID),
+		}
+	}
+
+	return &model.TigerConnection{
+		Edges: edges,
+		PageInfo: &model.PageInfo{
+			HasNextPage: nextCursor != nil,
+			EndCursor:   nextCursor,
+		},
+	}, nil
 }
 
 // ListSightings is the resolver for the ListSightings field.

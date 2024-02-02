@@ -12,11 +12,16 @@ import (
 //go:generate go run github.com/99designs/gqlgen@v0.17.43 generate
 
 type Resolver struct {
-	UserRepository db.UserRepository
+	UserRepository  db.UserRepository
+	TigerRepository db.TigerRepository
+	SightRepository db.SightingRepository
 }
 
 func NewResolver(gDB *gorm.DB) *Resolver {
+	sightRepo := db.NewSightingRepository(gDB)
 	return &Resolver{
-		UserRepository: db.NewUserRepository(gDB),
+		UserRepository:  db.NewUserRepository(gDB),
+		TigerRepository: db.NewTigerRepository(gDB, sightRepo),
+		SightRepository: sightRepo,
 	}
 }
