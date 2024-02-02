@@ -8,6 +8,9 @@ import (
 	"gorm.io/gorm"
 )
 
+// Use the `mockgen` command to generate a mock for the interface.
+//go:generate mockgen -source=user_repo.go -destination=mock_user_repo.go -package=db
+
 type UserRepository interface {
 	Create(user *User) (*jwt.TokenModel, error)
 	AuthenticateUser(username string, password string) bool
