@@ -8,12 +8,33 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/google/uuid"
+	"github.com/lakshyab1995/tiger-kittens/db"
 	"github.com/lakshyab1995/tiger-kittens/graph/model"
+	"github.com/lakshyab1995/tiger-kittens/jwt"
 )
 
 // CreateUser is the resolver for the CreateUser field.
 func (r *mutationResolver) CreateUser(ctx context.Context, username string, password string, email string) (*model.User, error) {
-	panic(fmt.Errorf("not implemented: CreateUser - CreateUser"))
+	dbUser := &db.User{
+		Username: username,
+		Password: password,
+		Email:    email,
+		ID:       uuid.New().String(),
+	}
+	tokenModel, err := r.UserRepository.Create(dbUser)
+	if err != nil {
+		return nil, err
+	}
+
+	token := fmt.Sprintf("Bearer %s", tokenModel.Token)
+	return &model.User{
+		ID:       dbUser.ID,
+		Username: dbUser.Username,
+		Email:    dbUser.Email,
+		Expiry:   &tokenModel.Expiry,
+		Token:    &token,
+	}, nil
 }
 
 // CreateTiger is the resolver for the createTiger field.
@@ -28,12 +49,26 @@ func (r *mutationResolver) CreateSighting(ctx context.Context, tigerID int, time
 
 // Login is the resolver for the Login field.
 func (r *mutationResolver) Login(ctx context.Context, input model.Login) (*model.TokenMeta, error) {
-	panic(fmt.Errorf("not implemented: Login - Login"))
+	var user db.User
+	user.Password = input.Password
+	user.Username = input.Username
+	isAuthenticated := r.UserRepository.AuthenticateUser(user.Username, user.Password)
+	if !isAuthenticated {
+		return nil, &WrongUsernameOrPasswordError{}
+	}
+	token, err := jwt.GenerateToken(user.Username)
+	if err != nil {
+		return nil, err
+	}
+	return &model.TokenMeta{
+		Token:  token.Token,
+		Expiry: token.Expiry,
+	}, nil
 }
 
 // RefreshToken is the resolver for the refreshToken field.
 func (r *mutationResolver) RefreshToken(ctx context.Context, token string) (*model.TokenMeta, error) {
-	panic(fmt.Errorf("not implemented: RefreshToken - refreshToken"))
+	return RefreshToken(ctx, token)
 }
 
 // ListTigers is the resolver for the listTigers field.
